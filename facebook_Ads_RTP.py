@@ -1,44 +1,25 @@
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col
-from pyspark.sql.types import StructType, StringType, DoubleType, TimestampType
+import json
+import time
 
-# 1. Spark Session
-spark = SparkSession.builder \
-    .appName("FacebookAdsRealTimeProcessing") \
-    .getOrCreate()
+# Sample data simulating Facebook Ads
+facebook_ads_data = [
+    '{"ad_id": "AD101", "campaign_id": "CMP001", "impressions": 100, "clicks": 10, "spend": 50.0}',
+    '{"ad_id": "AD102", "campaign_id": "CMP002", "impressions": 200, "clicks": 30, "spend": 75.0}',
+    '{"ad_id": "AD103", "campaign_id": "CMP003", "impressions": 150, "clicks": 15, "spend": 60.0}',
+]
 
-spark.sparkContext.setLogLevel("WARN")
+# Process each "streamed" record
+for record_str in facebook_ads_data:
+    # Simulate streaming delay
+    time.sleep(1)
 
-# 2. Define Facebook Ads schema (simplified example)
-fb_schema = StructType() \
-    .add("ad_id", StringType()) \
-    .add("campaign_id", StringType()) \
-    .add("impressions", DoubleType()) \
-    .add("clicks", DoubleType()) \
-    .add("spend", DoubleType()) \
-    .add("timestamp", TimestampType())
+    # Parse JSON string
+    record = json.loads(record_str)
 
-# 3. Read data from Kafka
-ads_raw_df = spark.readStream \
-    .format("kafka") \
-    .option("kafka.bootstrap.servers", "localhost:9092") \
-    .option("subscribe", "facebook_ads_topic") \
-    .option("startingOffsets", "latest") \
-    .load()
+    # Calculate CTR (Click-Through Rate)
+    impressions = record.get("impressions", 0)
+    clicks = record.get("clicks", 0)
+    ctr = (clicks / impressions) if impressions else 0
 
-# 4. Convert binary Kafka 'value' to JSON string
-ads_df = ads_raw_df.selectExpr("CAST(value AS STRING) as json_str") \
-    .select(from_json(col("json_str"), fb_schema).alias("data")) \
-    .select("data.*")
-
-# 5. Add derived metrics (CTR etc.)
-ads_transformed_df = ads_df.withColumn("CTR", col("clicks") / col("impressions"))
-
-# 6. Write to console/sink (for testing — replace with S3, Delta Lake, Redshift etc.)
-query = ads_transformed_df.writeStream \
-    .format("console") \
-    .outputMode("append") \
-    .option("truncate", False) \
-    .start()
-
-query.awaitTermination()
+    # Output processed result
+    print(f"Ad ID: {record['ad_id']}, Campaign: {record['campaign_id']}, CTR: {ctr:.2f}, Spend: {record['spend']}")
